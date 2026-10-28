@@ -1,42 +1,53 @@
-# Approved Environment Context
+# Connection Setup and Live Discovery
 
-## Setup
+Teleport controls authentication, roles, OS logins, and node access. Do not duplicate those permissions in a local environment inventory or ask users to enumerate nodes manually.
 
-1. Ask the infrastructure owner to define the first allowed environment and diagnostic tasks. Start with nonproduction SSH access.
-2. Copy the bundled environment template to an organization-approved private location. Provide its path explicitly when invoking the skill. Do not search the user's home directory for configuration or credentials.
-3. Populate `environments` only with owner-approved entries. Leave it empty until these decisions are made; an empty list means no configured targets, not unrestricted access.
-4. Validate the JSON with a standard JSON parser. Read only the supplied context file, not credential stores. No script consumes this template automatically.
-5. Verify the policy against actual Teleport RBAC with the infrastructure owner. A local context file cannot grant permissions or override approval requirements.
+## One-Time Setup
 
-## Environment Entry Fields
+From the repository root, in the prepared Bash/WSL terminal:
 
-| Field | Expected value |
+```bash
+python3 skills/teleport-tsh/scripts/setup_environment.py
+```
+
+Setup checks `tsh` and Git, creates or reuses `~/.local/share/teleport-tsh/.venv` in the current Python execution environment, and installs the declared Python requirements into that venv. It does not need system pip. If Python venv support, Git, or `tsh` is missing, it stops with guidance; it never installs system packages, invokes sudo, or replaces `tsh`. On Debian/Ubuntu, venv support may require user installation of `python3-venv` for their Python version.
+
+The skill is copied into the host user's `.copilot/skills/teleport-tsh`. Under WSL, setup resolves the Windows profile using `cmd.exe` and `wslpath`; the venv remains in the Linux execution environment, not the Windows skill package. Use `--skills-dir <path>` for another skills root and `--venv-dir <path>` for another dedicated venv. Paths must use the invoking environment's syntax.
+
+Setup displays the current valid session and asks whether to reuse it. Otherwise it asks for proxy and username, runs interactive login, and verifies the resulting session. The proxy accepts a hostname or HTTPS URL, defaults an omitted port to `443`, and re-prompts invalid input. Passwords and MFA are entered directly into the terminal/browser, never chat.
+
+After compatibility and authentication checks, setup lists visible nodes and labels from `tsh ls`. It performs no SSH, diagnostics, elevation, or remote changes. Skill updates preserve installed private preferences and destination-only files, and exclude source private context, `.venv`, and Python caches.
+
+## Optional Preferences
+
+No configuration file is required. After successful setup, the user may save only proxy and username in the installed skill's `assets/environment.json`, beside the bundled example:
+
+```json
+{
+	"proxy": "teleport.example.invalid:443",
+	"teleportUser": "example.user"
+}
+```
+
+These are illustrative placeholders, not actual targets. Preferences supply prompt defaults, not authorization or proof of a session. `--output <path>` selects another private destination. Existing files are never overwritten. Legacy files containing `environments` are preserved but ignored; they are not needed for setup. To save new preferences without replacing legacy data, use a different output path.
+
+Do not store roles, node inventories, logins, certificates, keys, passwords, or tokens in this file. Keep private preferences Git-ignored and exclude them when distributing the skill. Apply organization-required filesystem protections separately; Git ignore is not an access-control mechanism.
+
+## Labels and Target Selection
+
+Read nodes and labels live using structured output. Labels organize discovery; they do not grant access or authorize command fan-out.
+
+| Label | Meaning in the supplied workflow |
 | --- | --- |
-| `name` | Explicit environment name, such as staging; no implicit default. |
-| `proxy` | Approved Teleport proxy hostname and HTTPS port. |
-| `cluster` | Exact Teleport cluster name; do not infer it from the proxy. |
-| `authConnector` | Organization-approved connector if explicitly configured. Use `null` for the confirmed default login flow; do not invent an SSO connector or change authentication methods. |
-| `teleportUser` | Optional Teleport identity if required by the login method; not the OS login. |
-| `production` | Boolean environment classification supplied by the owner; never assume missing means false. |
-| `allowedOsLogins` | Explicit non-root OS logins permitted for this workflow. |
-| `targetNodes` | Exact approved node names; discovery labels alone do not authorize other nodes. |
-| `nodeLabels` | Approved discovery label key/value pairs; not permission for multi-node execution. |
-| `requireApprovalBeforeEachRemoteCommand` | Set to `true` when each remote command requires fresh user approval; stored test approval is not ongoing authorization. |
-| `diagnostics` | Exact approved commands, their purpose, output limits, and timeout in seconds. Avoid arbitrary shell fragments. |
-| `dataPolicy` | What may be read, redacted, and included in chat; follow enterprise AI/data handling policy. |
+| `grp` | Customer or team grouping |
+| `loc` | Hosting location: `nh`/`ma` datacenters, `cus` customer site, or a customer-specific location group |
+| `svc` | Hosted service; `sp` denotes SitePortal |
+| `use` | Purpose: `prod`, `uat`, `qa`, or `dev` |
 
-Do not store passwords, MFA codes, bearer tokens, private keys, certificate contents, or credential paths in this template. Hostnames, usernames, and labels can also be sensitive; do not commit private context into a public repository.
+Unknown or missing labels are not evidence of nonproduction. Resolve an exact node or node ID and its live cluster before SSH. Ask when a filter matches several nodes; never connect to a label selector as an implicit multi-node operation.
 
-If the context is stored inside a workspace, verify its exact path is ignored by Git before use. Git ignore rules prevent ordinary staging, not access by local processes, backups, or forced staging; apply organization-required filesystem protections separately. Keep it outside the distributable skill directory. Historical test results do not establish current authentication, version compatibility, or authorization; revalidate those before each use.
+## Least Privilege and Elevation
 
-## Operational Decisions
+Use the least-privileged suitable OS login returned by the live session. In the supplied workflow, `c2-support` is basic access, `c2-maintenance` is elevated access with passwordless sudo, and `root` is full access. These conventions do not make a local file authoritative about actual privileges.
 
-- Confirm whether VS Code terminal commands run on Windows, WSL, a container, or a remote host. The installed client, network access, and Teleport profile must exist in that same execution environment.
-- Use Windows PowerShell examples only in PowerShell; do not mix Bash environment-variable or quoting syntax into those commands.
-- Agree on output and timeout limits before remote execution. A read-only command still needs bounded execution and approved data access.
-- Require explicit approval of production targets and exact diagnostic commands. This foundation does not support mutations, even when requested alongside diagnostics.
-- Prefer the user's normal SSO identity and short-lived certificates. Do not use shared admin accounts or create automation credentials as a workaround for interactive authentication.
-
-## First Smoke Test
-
-Have the user authenticate normally. Verify status, list nodes in the approved nonproduction environment, select one exact node, and execute one approved bounded diagnostic such as `uptime`. Record the observed exit status and confirm the result identifies the intended host. Do not claim this smoke test passed until it has actually run.
+A root-only identity is valid. Before every command using an elevated login, sudo, or root, show the exact proxy/cluster, node, login, and command and obtain explicit confirmation. Confirm the syntax of every proposed privileged change before executing it. Do not automatically retry permission failures with a stronger login or submit Access Requests. Task-scoped non-elevated diagnostics do not require a separate local node allowlist.

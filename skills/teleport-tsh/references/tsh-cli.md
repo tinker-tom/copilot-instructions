@@ -1,6 +1,6 @@
 # tsh CLI Recipes
 
-These are illustrative command forms, not approved infrastructure targets. Replace example values only with supplied, verified organization context. Consult installed command help before using version-dependent flags. Require an exact match to the proxy's current server version rather than pinning an example release.
+These are illustrative command forms, not approved infrastructure targets. Replace example values only with supplied, verified organization context. Consult installed command help before using version-dependent flags. Use live Teleport permissions rather than a local environment inventory.
 
 ## Contents
 
@@ -62,17 +62,17 @@ PowerShell:
 
 ```powershell
 Get-Command tsh -CommandType Application -ErrorAction Stop
-tsh version
+tsh version --client --format=json
 ```
 
 Bash:
 
 ```bash
 command -v tsh
-tsh version
+tsh version --client --format=json
 ```
 
-Check each command's result before continuing. These commands do not install software or authenticate. Read the local client version, not just the proxy version that `tsh version` may also display. Complete the following gate before running `tsh status`, login, or resource discovery.
+Check each command's result before continuing. These commands do not install software, contact a proxy, or authenticate. Inspect `tsh status --format=json` to identify a reusable session, then confirm the intended proxy/user/cluster and complete the compatibility gate before login or discovery. Status may retrieve alerts from the existing profile's proxy; do not describe it as an offline guarantee.
 
 ## Required Proxy Version Gate
 
@@ -102,49 +102,55 @@ if ($proxyMetadata.server_version -isnot [string] -or
 $proxyMetadata | Select-Object server_version, min_client_version
 ```
 
-These recipes retrieve and check the presence/type of metadata; they do not implement version comparison. Check successful completion, validate all three version values, then compare the installed client against both fields. Normalize only an optional leading `v`. Require exact equality with `server_version` and semantic version ordering at or above `min_client_version`; never compare versions lexicographically or strip patch/prerelease differences. Use an available proven semantic-version parser for automation. If a value cannot be interpreted reliably, stop rather than guessing. Treat a minimum higher than the server version as inconsistent metadata and stop.
+These recipes retrieve and check the presence/type of metadata; they do not implement version comparison. Validate all three versions using a proven semantic-version parser. The client must be at or above `min_client_version` and have the same major version as the proxy or be one major behind. Normalize only an optional leading `v`; never compare lexicographically or discard prerelease information. Exact patch equality is not required. Invalid values or a minimum higher than the server version are blockers.
 
-A client above the minimum but different from the server still fails this organization's exact-match requirement. A failed HTTP request, TLS error, invalid JSON, or missing field must stop the workflow; do not fall back to cached version output or disable certificate validation. Report local, server, and minimum versions and the gate result. Do not install or downgrade automatically. Retrieve current metadata again after an approved client update or proxy change.
+Follow the [official component compatibility rules](https://goteleport.com/docs/upgrading/overview/). A newer-major client or a client more than one major behind is unsupported. HTTP/TLS failures, invalid JSON, and missing metadata remain blockers; never disable certificate or compatibility checks. Report local, server, and minimum versions and the result. Do not install or downgrade tsh automatically. Recheck after client/proxy changes. The specific advisory `A security patch is available for Teleport. Please upgrade your Cluster to v15.5.4 or newer.` is nonblocking for this workflow, but never changes a failed command's exit status or suppresses other warnings.
 
-Once the gate passes, run `tsh status`. Use `tsh status --format=json` only after confirming support in `tsh status --help`; parse the result using `ConvertFrom-Json` or another standard JSON parser. Do not assume a JSON schema across client versions.
+Use `tsh status --format=json` only after confirming support in installed help. Read the `active` profile, not an arbitrary entry in `profiles`; verify its `profile_url`, `username`, `cluster`, `valid_until`, and `logins`. Expired or missing sessions require login. Parse JSON structurally and do not assume schemas across versions.
 
 ## User-Completed Login
 
 ```text
-tsh login --proxy=teleport.example.com:443 --auth=approved-sso
+tsh login --proxy=teleport.example.com:443 --user=example.user --request-roles=no
 tsh status
 ```
+
+Setup uses an explicit Teleport username and the proxy's configured authentication flow; it does not ask users to define SSO connectors manually. `--request-roles=no` disables automatic role requests in the verified client. For SSO, identity is established by the browser flow; verify the resulting status rather than silently accepting a different user.
+
+Cluster selection is command-specific. In tsh 15.4.6, login takes a positional cluster, while status reports the active profile and has no `--cluster` flag. Normal setup uses the cluster established by login, not a cluster questionnaire. A later task targeting another cluster must verify/switch that context explicitly. Do not copy discovery or SSH `--cluster` flags onto login or status.
 
 The user must complete browser SSO and MFA. Use `--browser=none` only when the user needs to open the login link manually; it does not bypass authentication. Keep authentication links out of persistent logs. Never collect passwords or MFA codes through chat, and never approve an MFA prompt on the user's behalf.
 
 ## Discovery
 
 ```text
-tsh ls --proxy=teleport.example.com:443 --cluster=staging env=staging
+tsh ls --proxy=teleport.example.com:443 --cluster=staging use=qa
 ```
 
-Positional arguments to `tsh ls` are label expressions such as `env=staging`, not node names. Do not pass a bare hostname there. For an exact node name, confirm predicate support with installed command help and use:
+Positional arguments to `tsh ls` are label expressions such as `use=qa`, not node names. `grp`, `loc`, `svc`, and `use` are grouping/filtering labels, not locally maintained permissions. Do not pass a bare hostname there. For an exact node name, confirm predicate support with installed command help and use:
 
 ```text
 tsh ls --proxy=teleport.example.com:443 --cluster=staging --query='name == "staging-api-1"'
 ```
 
-Use the returned node name for later target selection; discovery does not authorize SSH. Keep externally supplied values out of executable expressions unless properly validated and escaped for both the shell and predicate language.
+Use the returned node name or ID for target selection. Teleport enforces SSH access; a listing does not specify the user's intended task or authorize elevated commands or arbitrary changes. Keep discovered values out of executable expressions unless validated and escaped for both shell and predicate syntax.
 
 Confirm available formatting options with `tsh ls --help` before requesting structured output. Discover within the approved environment and select an exact node. Discovery visibility reflects the user's roles; missing nodes are not permission to connect directly by guessed addresses.
 
 ## One-Shot SSH Diagnostic
 
 ```text
-tsh ssh --proxy=teleport.example.com:443 --cluster=staging diagnostics@staging-api-1 uptime
+tsh ssh --proxy=teleport.example.com:443 --cluster=staging --request-mode=off diagnostics@staging-api-1 uptime
 ```
 
 Use only a verified allowed OS login and exact node. The OS login (`diagnostics` here) is distinct from the Teleport identity used during login. Confirm timeout support in the execution tool and apply an agreed deadline before execution; do not assume a client timeout flag exists.
 
+Verify `--request-mode=off` support and use it to prevent automatic Access Requests. Prefer a basic login such as `c2-support` when appropriate. For every command using `c2-maintenance`, sudo, or root, show the exact target/login/command, confirm syntax, and obtain approval before execution. Root-only identities are supported after confirmation; do not automatically escalate on access denial. Explicitly requested changes require their own scope and confirmation rather than being inferred from a diagnostic request.
+
 For GNU `timeout` around a terminal-accessing `tsh` in Bash/WSL, confirm `--foreground` support with `timeout --help` and use it, particularly in a subshell wrapper. For example, this is a 15-second deadline with an additional 2-second forced-kill grace, not a strict 15-second wall-clock cap:
 
 ```bash
-timeout --foreground --signal=TERM --kill-after=2s 15s tsh ssh --proxy=teleport.example.com:443 --cluster=staging diagnostics@staging-api-1 uptime
+timeout --foreground --signal=TERM --kill-after=2s 15s tsh ssh --proxy=teleport.example.com:443 --cluster=staging --request-mode=off diagnostics@staging-api-1 uptime
 ```
 
 Default GNU timeout grouping can place `tsh` outside the terminal foreground group. Terminal access can then stop the job, including the timeout process, so the deadline and Ctrl+C may not behave as expected. Foreground mode preserves terminal access, but does not time out descendants of the command. Neither mode guarantees that remote processes terminate. If foreground mode is unavailable, stop or use a verified compatible execution-tool deadline; do not silently fall back to the known problematic wrapper.

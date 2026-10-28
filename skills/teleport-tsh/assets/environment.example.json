@@ -1,3 +1,4 @@
 {
-  "environments": []
+  "proxy": "teleport.example.invalid:443",
+  "teleportUser": "example.user"
 }

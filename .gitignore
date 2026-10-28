@@ -6,6 +6,7 @@ __pycache__/
 
 # Private local Teleport environment context
 /.local/teleport/
+/skills/teleport-tsh/assets/environment.json
 
 # Website (Astro)
 website/node_modules/
