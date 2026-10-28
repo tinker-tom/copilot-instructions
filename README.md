@@ -151,6 +151,52 @@ A **skill** is a modular, self-contained package (in `skills/`) that extends Git
 - **application-layer-testing**: Testing Application layer handlers with sociable testing strategy (real Domain objects, mocked Infrastructure)
 - **skill-creator**: Create and manage GitHub Copilot skills
 
+### Maintaining Personal Skill Installations
+
+Repository skills are the source of truth, but copied personal installations do not update automatically. Use [tools/sync_skills.py](tools/sync_skills.py) to preview or explicitly apply updates for any current or future top-level skill. It reuses the repository's skill validator and requires Python 3.10+ and PyYAML, also used by the existing skill-authoring tools.
+
+Preview one skill, then apply the same plan to your current user's personal skills directory:
+
+```bash
+python tools/sync_skills.py --skill teleport-tsh
+python tools/sync_skills.py --skill teleport-tsh --apply
+```
+
+The default destination is `~/.copilot/skills` for the Python process's operating system. Windows Python uses the Windows home; WSL Python uses the Linux home. Repeat `--destination` to manage both explicitly from WSL, replacing `WINDOWS_USER` with your Windows account directory:
+
+```bash
+python tools/sync_skills.py --skill teleport-tsh --destination /mnt/c/Users/WINDOWS_USER/.copilot/skills --destination ~/.copilot/skills
+```
+
+Review the preview, then append `--apply` to that command. Native Windows destinations can likewise be supplied to Windows Python using quoted Windows paths.
+
+Use repeated `--skill` options to select several skills, or `--all` to select every top-level directory containing `SKILL.md`, including skills created in the future:
+
+```bash
+python tools/sync_skills.py --all
+python tools/sync_skills.py --all --apply
+```
+
+`--all` installs missing skills as well as updating existing ones. It does not uninstall skills removed from this repository. No background updater, scheduled task, or Git hook is installed.
+
+#### Update Safety
+
+- Preview is the default and does not change installed packages or manifests. Review the listed added, changed, and removed file paths before applying.
+- Successful installation records SHA-256 file hashes under the destination root's `.skill-sync-state/`. Keep these manifests: they distinguish the last synchronized version from local edits.
+- Existing identical copies are adopted by recording a manifest. Existing different copies with no manifest are refused because their edit history is unknown.
+- Local modifications, additions, and deletions are refused rather than overwritten. Even if source changes are present too, there is no force-overwrite option. Review the listed conflicts; merge intended changes into the repository or preserve a backup outside the installed skill, then reconcile the copy manually and preview again.
+- All selected destinations are checked for conflicts before any writes. Each package is staged and verified before replacement, with restoration of the previous directory if installation fails. The entire multi-package run is not one transaction; an I/O failure later in a run can leave earlier packages updated. Re-run preview to inspect the result.
+- Only the selected skill directories are copied, never repository-wide private configuration. Hidden paths such as `.local/` and `.env`, common runtime/build directories, and credential/archive suffixes such as `.pem`, `.key`, and `.skill` are excluded from source packages. Example JSON templates remain included. Symbolic links are refused. Exclusions are not a secret scanner: never place private configuration or credentials in distributable skill directories.
+- Source metadata is validated before installation, and source/destination overlap is refused. No installed scripts are executed by synchronization.
+
+Start a new Copilot chat after applying updates so the revised skill can be loaded. Existing conversations may retain previously loaded content. Keep organization-specific context outside the installed package and supply its path explicitly when using a skill.
+
+Run the maintenance tool's isolated local tests with:
+
+```bash
+python -m unittest discover -s tests/tools -p test_sync_skills.py -v
+```
+
 ## 🧑‍💻 How to contribute
 
 Contributions are welcome!  

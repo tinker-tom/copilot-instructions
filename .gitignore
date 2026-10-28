@@ -1,5 +1,12 @@
 .DS_Store
 
+# Python maintenance tools and tests
+__pycache__/
+*.py[cod]
+
+# Private local Teleport environment context
+/.local/teleport/
+
 # Website (Astro)
 website/node_modules/
 website/dist/

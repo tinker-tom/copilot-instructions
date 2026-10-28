@@ -15,15 +15,19 @@
 | `name` | Explicit environment name, such as staging; no implicit default. |
 | `proxy` | Approved Teleport proxy hostname and HTTPS port. |
 | `cluster` | Exact Teleport cluster name; do not infer it from the proxy. |
-| `authConnector` | Organization-approved SSO connector; confirm before login. |
+| `authConnector` | Organization-approved connector if explicitly configured. Use `null` for the confirmed default login flow; do not invent an SSO connector or change authentication methods. |
 | `teleportUser` | Optional Teleport identity if required by the login method; not the OS login. |
 | `production` | Boolean environment classification supplied by the owner; never assume missing means false. |
 | `allowedOsLogins` | Explicit non-root OS logins permitted for this workflow. |
+| `targetNodes` | Exact approved node names; discovery labels alone do not authorize other nodes. |
 | `nodeLabels` | Approved discovery label key/value pairs; not permission for multi-node execution. |
+| `requireApprovalBeforeEachRemoteCommand` | Set to `true` when each remote command requires fresh user approval; stored test approval is not ongoing authorization. |
 | `diagnostics` | Exact approved commands, their purpose, output limits, and timeout in seconds. Avoid arbitrary shell fragments. |
 | `dataPolicy` | What may be read, redacted, and included in chat; follow enterprise AI/data handling policy. |
 
 Do not store passwords, MFA codes, bearer tokens, private keys, certificate contents, or credential paths in this template. Hostnames, usernames, and labels can also be sensitive; do not commit private context into a public repository.
+
+If the context is stored inside a workspace, verify its exact path is ignored by Git before use. Git ignore rules prevent ordinary staging, not access by local processes, backups, or forced staging; apply organization-required filesystem protections separately. Keep it outside the distributable skill directory. Historical test results do not establish current authentication, version compatibility, or authorization; revalidate those before each use.
 
 ## Operational Decisions
 
