@@ -24,8 +24,8 @@ No configuration file is required. After successful setup, the user may save onl
 
 ```json
 {
-	"proxy": "teleport.example.invalid:443",
-	"teleportUser": "example.user"
+  "proxy": "teleport.example.invalid:443",
+  "teleportUser": "example.user"
 }
 ```
 
