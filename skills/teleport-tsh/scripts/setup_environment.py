@@ -93,7 +93,7 @@ def establish_login(proxy, username, cluster=None):
 
 def require_tsh_features():
     errors = []
-    for subcommand in ("version", "status", "ls", "login"):
+    for subcommand in ("version", "status", "ls", "login", "ssh"):
         try:
             help_text = run_capture(
                 ["tsh", subcommand, "--help"], include_stderr=True
@@ -116,6 +116,7 @@ def require_tsh_features():
         required = {
             "ls": ("--cluster",),
             "login": ("--proxy", "--user", "--request-roles"),
+            "ssh": ("--request-mode",),
         }.get(subcommand, ())
         for flag in required:
             if flag not in help_text:
@@ -391,6 +392,7 @@ def active_session(document):
             return None
         return {
             "proxy": proxy, "teleportUser": username, "cluster": cluster,
+            "valid_until": expires.astimezone(timezone.utc).isoformat(),
             "logins": extract_logins({"logins": profile.get("logins", [])}),
         }
     except (KeyError, ValueError, TypeError, AttributeError, SetupError):
@@ -457,7 +459,11 @@ def list_nodes(session):
     ])
     if not isinstance(nodes, list):
         raise SetupError("tsh ls returned an unsupported node-list schema.")
-    print("\nVisible SSH nodes (access is enforced by Teleport):")
+    discovered_at = datetime.now(timezone.utc).isoformat()
+    print(
+        f"\nVisible SSH nodes discovered at {discovered_at} "
+        "(access is enforced by Teleport):"
+    )
     for node in nodes:
         if not isinstance(node, dict):
             raise SetupError("tsh ls returned an invalid node entry.")
@@ -466,10 +472,14 @@ def list_nodes(session):
         if not isinstance(metadata, dict) or not isinstance(spec, dict):
             raise SetupError("tsh ls returned invalid node metadata.")
         name = spec.get("hostname") or metadata.get("name")
+        node_id = metadata.get("id") or metadata.get("name")
         labels = metadata.get("labels", {})
         if not isinstance(name, str) or not isinstance(labels, dict):
             raise SetupError("tsh ls returned invalid node names or labels.")
-        print(f"  {json.dumps(name)}  {json.dumps(labels, sort_keys=True)}")
+        print(
+            f"  {json.dumps(name)}  {json.dumps(node_id)}  "
+            f"{json.dumps(labels, sort_keys=True)}"
+        )
     if not nodes:
         print("  No nodes visible in the selected cluster.")
     return nodes
@@ -639,7 +649,9 @@ def run_setup(output_argument, skills_directory=None):
     reuse = False
     if session:
         print("Current session: " + json.dumps({
-            key: session[key] for key in ("proxy", "teleportUser", "cluster")
+            key: session[key] for key in (
+                "proxy", "teleportUser", "cluster", "valid_until",
+            )
         }))
         reuse = ask_yes_no("Use this session for setup and node discovery?")
     if reuse:
@@ -670,7 +682,9 @@ def run_setup(output_argument, skills_directory=None):
             raise SetupError(
                 "Login did not establish the requested valid session."
             )
-    print("Session OS logins: " + json.dumps(session["logins"]))
+    print("Session details: " + json.dumps({
+        key: session[key] for key in ("valid_until", "logins")
+    }))
     list_nodes(session)
     if not output.exists() and ask_yes_no(
         "Remember proxy and username as optional connection preferences?"

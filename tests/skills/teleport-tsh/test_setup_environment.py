@@ -232,6 +232,7 @@ class SetupEnvironmentTests(unittest.TestCase):
             session = {
                 "proxy": expected_proxy, "teleportUser": "example.user",
                 "cluster": "staging", "logins": ["root", "c2-support"],
+                "valid_until": "2099-01-01T00:00:00+00:00",
             }
             answers = iter(["teleport.example.com", "example.user"])
 
@@ -300,6 +301,7 @@ class SetupEnvironmentTests(unittest.TestCase):
             "proxy": "teleport.example.com:443",
             "teleportUser": "example.user",
             "cluster": "staging", "logins": ["root"],
+            "valid_until": "2099-01-01T00:00:00+00:00",
         }
         with tempfile.TemporaryDirectory() as directory:
             with (
@@ -412,6 +414,8 @@ class SetupEnvironmentTests(unittest.TestCase):
                 help_text = "--proxy --user --request-roles"
             if subcommand == "ls":
                 help_text += " --cluster"
+            if subcommand == "ssh":
+                help_text = "--request-mode"
             return type(
                 "Result", (),
                 {"returncode": 0, "stdout": "", "stderr": help_text},
@@ -421,7 +425,7 @@ class SetupEnvironmentTests(unittest.TestCase):
             setup_environment.subprocess, "run", side_effect=help_result
         ) as run:
             setup_environment.require_tsh_features()
-        self.assertEqual(run.call_count, 4)
+        self.assertEqual(run.call_count, 5)
 
     def test_feature_detection_requires_access_request_control(self):
         with patch.object(
@@ -810,7 +814,26 @@ class SetupEnvironmentTests(unittest.TestCase):
         self.assertEqual(session["proxy"], "teleport.example.com:443")
         self.assertEqual(session["teleportUser"], "example.user")
         self.assertEqual(session["cluster"], "example-cluster")
+        self.assertEqual(session["valid_until"], "2999-01-01T00:00:00+00:00")
         self.assertEqual(session["logins"], ["root"])
+
+    def test_node_snapshot_prints_timestamp_id_and_labels(self):
+        node = {
+            "metadata": {"id": 123, "labels": {"use": "dev"}},
+            "spec": {"hostname": "node-a"},
+        }
+        with (
+            patch.object(
+                setup_environment, "parse_json_command", return_value=[node]
+            ),
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            setup_environment.list_nodes({
+                "proxy": "teleport.example.com:443", "cluster": "staging",
+            })
+        output = stdout.getvalue()
+        self.assertIn("Visible SSH nodes discovered at ", output)
+        self.assertIn('"node-a"  123  {"use": "dev"}', output)
 
     def test_expired_session_is_not_reused(self):
         self.assertIsNone(setup_environment.active_session({

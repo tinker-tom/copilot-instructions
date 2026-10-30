@@ -4,7 +4,7 @@ Teleport controls authentication, roles, OS logins, and node access. Do not dupl
 
 ## One-Time Setup
 
-From the repository root, in the prepared Bash/WSL terminal:
+From the repository root, in the current terminal when command completion is reliable. Use the conditional Bash recovery procedure in the skill only if the existing terminal shows concrete interference or unreliable execution evidence:
 
 ```bash
 python3 skills/teleport-tsh/scripts/setup_environment.py
@@ -14,9 +14,9 @@ Setup checks `tsh` and Git, creates or reuses `~/.local/share/teleport-tsh/.venv
 
 The skill is copied into the host user's `.copilot/skills/teleport-tsh`. Under WSL, setup resolves the Windows profile using `cmd.exe` and `wslpath`; the venv remains in the Linux execution environment, not the Windows skill package. Use `--skills-dir <path>` for another skills root and `--venv-dir <path>` for another dedicated venv. Paths must use the invoking environment's syntax.
 
-Setup displays the current valid session and asks whether to reuse it. Otherwise it asks for proxy and username, runs interactive login, and verifies the resulting session. The proxy accepts a hostname or HTTPS URL, defaults an omitted port to `443`, and re-prompts invalid input. Passwords and MFA are entered directly into the terminal/browser, never chat.
+Setup displays the current valid session and asks whether to reuse it. Otherwise it asks for proxy and username, runs interactive login, and verifies the resulting session. The proxy accepts a hostname or HTTPS URL, defaults an omitted port to `443`, and re-prompts invalid input. Passwords and MFA are entered directly into the terminal/browser, never chat. Setup is not required for a one-time node-inventory request when a valid intended session already exists; use the fast path in the skill instead.
 
-After compatibility and authentication checks, setup lists visible nodes and labels from `tsh ls`. It performs no SSH, diagnostics, elevation, or remote changes. Skill updates preserve installed private preferences and destination-only files, and exclude source private context, `.venv`, and Python caches.
+After compatibility and authentication checks, setup lists visible nodes, IDs, labels, and a discovery timestamp from `tsh ls`. It reports the active session expiry so the output can seed the skill's conversation-local cache. It performs no SSH, diagnostics, elevation, or remote changes. Skill updates preserve installed private preferences and destination-only files, and exclude source private context, `.venv`, and Python caches.
 
 ## Optional Preferences
 
@@ -33,11 +33,13 @@ These are illustrative placeholders, not actual targets. Preferences supply prom
 
 Do not store roles, node inventories, logins, certificates, keys, passwords, or tokens in this file. Keep private preferences Git-ignored and exclude them when distributing the skill. Apply organization-required filesystem protections separately; Git ignore is not an access-control mechanism.
 
+The skill may retain verified session metadata and a node snapshot in the current conversation to avoid repeating preflight during the same login session. This cache is not written to this file or another local file, is not reused in a new conversation, and never grants access; Teleport RBAC remains authoritative.
+
 Do not add diagnostic exceptions to `assets/environment.json`. That file supplies local prompt defaults only; it is user-writable and does not grant authorization. A future SNMP workflow policy is described separately in [the deferred SNMP exception reference](./snmpwalk-policy.md) and is not consumed by setup.
 
 ## Labels and Target Selection
 
-Read nodes and labels live using structured output. Labels organize discovery; they do not grant access or authorize command fan-out.
+Read nodes and labels live using structured output when initializing or refreshing the conversation cache. Reuse that timestamped snapshot until invalidation. Labels organize discovery; they do not grant access or authorize command fan-out.
 
 | Label | Meaning in the supplied workflow |
 | --- | --- |

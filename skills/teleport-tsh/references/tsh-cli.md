@@ -1,10 +1,11 @@
 # tsh CLI Recipes
 
-These are illustrative command forms, not approved infrastructure targets. Replace example values only with supplied, verified organization context. Consult installed command help before using version-dependent flags. Use live Teleport permissions rather than a local environment inventory.
+These are illustrative command forms, not approved infrastructure targets. Replace example values only with supplied, verified organization context. Consult installed command help when initializing the cache or after a client-version change before using version-dependent flags. Use Teleport RBAC rather than a local permission inventory.
 
 ## Contents
 
-- [Required clean Bash terminal](#required-clean-bash-terminal)
+- [Use the current terminal](#use-the-current-terminal)
+- [Conditional Bash recovery](#conditional-bash-recovery)
 - [Local preflight](#local-preflight)
 - [Required proxy version gate](#required-proxy-version-gate)
 - [User-completed login](#user-completed-login)
@@ -13,48 +14,36 @@ These are illustrative command forms, not approved infrastructure targets. Repla
 - [Deferred resource workflows](#deferred-resource-workflows)
 - [Official references](#official-references)
 
-## Required Clean Bash Terminal
+## Use the Current Terminal
 
-For Bash/WSL execution, use a dedicated clean interactive session before running infrastructure commands:
+For read-only node inventory or a task-scoped SSH diagnostic, reuse the current terminal and a valid conversation-local session cache. Do not open a shell, run setup, or discover VS Code shell integration just because execution is in WSL. On cache initialization, check status, compatibility, and structured node discovery once; seed the cache from setup output when available. On subsequent tasks, reuse the same proxy, user, cluster, expiry, verified client capabilities, and timestamped node snapshot without repeating those commands. Parse cached inventory and stop for inventory-only requests; listing visible nodes does not connect to them or authorize a later remote command.
+
+```bash
+tsh status --format=json
+tsh version --client --format=json
+tsh ls --proxy=teleport.example.com:443 --cluster=staging --format=json
+```
+
+Use the exact flags supported by installed help. If the active context is missing or differs from the requested one, ask the user before login or switching clusters. Do not perform SSH for an inventory-only request.
+
+## Conditional Bash Recovery
+
+Use recovery only when there is concrete evidence that the current terminal is unreliable, such as a continuation prompt, interfering hooks, or missing completion/exit-status evidence. Stop submitting input to an incomplete command. If the terminal tool can preserve a separate session, start one persistent interactive shell:
 
 ```bash
 bash --noprofile --norc -i
 ```
 
-Launch this once in a persistent interactive terminal, not as a synchronous one-shot that waits for the shell to exit. Confirm its normal prompt and preserve the terminal/session identity for every subsequent command; do not silently return to the parent shell. If another command is running or Bash shows a continuation prompt, stop and ask the user to cancel the identified incomplete input first. Do not submit a command into that input.
-
-Before loading VS Code integration, submit these local checks separately as single-line commands:
+Check the prompt and hooks, then test local output and exit-status capture:
 
 ```bash
 printf 'CLEAN_BASH_READY\n'
 declare -p PROMPT_COMMAND
 trap -p DEBUG
-```
-
-An unset `PROMPT_COMMAND` and no DEBUG trap are expected before integration. Report unexpected hooks rather than disabling them automatically. Startup files are skipped, not edited; environment variables and exported functions may still be inherited. Preserve approved connectivity settings and do not claim this is a sanitized environment.
-
-In VS Code, locate the local integration script and inspect its guard variable:
-
-```bash
-code --locate-shell-integration-path bash
-declare -p VSCODE_SHELL_INTEGRATION
-```
-
-Unset variables may cause `declare -p` to return nonzero; that alone is not a setup failure. Verify the returned script path is an exact readable local file before sourcing it directly in this same shell. Inspect the script's initialization guard; if an inherited value prevents initialization, report it and obtain approval before changing it. Do not copy a version-specific path from documentation. For a verified path assigned to `integration_path`, source it with:
-
-```bash
-source "$integration_path"
-```
-
-Do not source user startup files or alter persistent shell configuration. If `code` or the script is unavailable, stop and request a prepared terminal rather than installing software. After integration loads, test only local execution:
-
-```bash
 sh -c 'printf "LOCAL_STDOUT_OK\n"; printf "LOCAL_STDERR_OK\n" >&2; exit 7'
 ```
 
-Require both markers and observed child exit status 7, not just an echoed invocation. A tool-reported exit code 7 is expected evidence, not a failed test. Use read-only command detection if available; a tracker that reports a prompt hook instead of the test is unreliable. Do not run infrastructure commands until this dedicated terminal's local execution and completion handling are verified. No local setup or previous test grants approval for a remote command.
-
-Submit short, single-line synchronous checks once the shell is ready. Code blocks below illustrate syntax; do not paste entire multiline examples into a terminal with unreliable submission handling. Use a reviewed script if necessary, with approval for its creation, rather than repeatedly submitting uncertain blocks.
+An unset `PROMPT_COMMAND` and no DEBUG trap are expected. Do not disable hooks or change profiles/settings automatically. Require both output markers and observed child status 7, not just an echoed command. Do not run `code --locate-shell-integration-path`, source VS Code shell integration, or install/update a VS Code Server for Teleport command tracking. If execution evidence remains unreliable, stop and ask the user to prepare a terminal. Local shell checks do not authorize remote commands.
 
 ## Local Preflight
 
@@ -72,11 +61,11 @@ command -v tsh
 tsh version --client --format=json
 ```
 
-Check each command's result before continuing. These commands do not install software, contact a proxy, or authenticate. Inspect `tsh status --format=json` to identify a reusable session, then confirm the intended proxy/user/cluster and complete the compatibility gate before login or discovery. Status may retrieve alerts from the existing profile's proxy; do not describe it as an offline guarantee.
+Check each command's result before continuing during cache initialization. These commands do not install software, contact a proxy, or authenticate. Inspect `tsh status --format=json` once to identify a reusable session, then confirm the intended proxy/user/cluster and complete the compatibility gate before discovery. Reuse these facts for subsequent tasks in the same conversation until invalidation. Status may retrieve alerts from the existing profile's proxy; do not describe it as an offline guarantee.
 
 ## Required Proxy Version Gate
 
-Use the approved proxy hostname and HTTPS port, without a scheme or path, as `TELEPORT_PROXY`. Do not infer this value from an unrelated active profile. Query both fields in one response to avoid comparing metadata from separate requests during an upgrade.
+Use the approved proxy hostname and HTTPS port, without a scheme or path, as `TELEPORT_PROXY`. Do not infer this value from an unrelated active profile. Query both fields in one response during cache initialization or invalidation, not for each task, to avoid comparing metadata from separate requests during an upgrade.
 
 Bash/WSL, requiring `curl` and `jq`:
 
@@ -104,9 +93,9 @@ $proxyMetadata | Select-Object server_version, min_client_version
 
 These recipes retrieve and check the presence/type of metadata; they do not implement version comparison. Validate all three versions using a proven semantic-version parser. The client must be at or above `min_client_version` and have the same major version as the proxy or be one major behind. Normalize only an optional leading `v`; never compare lexicographically or discard prerelease information. Exact patch equality is not required. Invalid values or a minimum higher than the server version are blockers.
 
-Follow the [official component compatibility rules](https://goteleport.com/docs/upgrading/overview/). A newer-major client or a client more than one major behind is unsupported. HTTP/TLS failures, invalid JSON, and missing metadata remain blockers; never disable certificate or compatibility checks. Report local, server, and minimum versions and the result. Do not install or downgrade tsh automatically. Recheck after client/proxy changes. The specific advisory `A security patch is available for Teleport. Please upgrade your Cluster to v15.5.4 or newer.` is nonblocking for this workflow, but never changes a failed command's exit status or suppresses other warnings.
+Follow the [official component compatibility rules](https://goteleport.com/docs/upgrading/overview/). A newer-major client or a client more than one major behind is unsupported. HTTP/TLS failures, invalid JSON, and missing metadata remain blockers; never disable certificate or compatibility checks. Report local, server, and minimum versions and the result. Do not install or downgrade tsh automatically. Recheck after a new login session, proxy/client changes, or cache invalidation. The specific advisory `A security patch is available for Teleport. Please upgrade your Cluster to v15.5.4 or newer.` is nonblocking for this workflow, but never changes a failed command's exit status or suppresses other warnings.
 
-Use `tsh status --format=json` only after confirming support in installed help. Read the `active` profile, not an arbitrary entry in `profiles`; verify its `profile_url`, `username`, `cluster`, `valid_until`, and `logins`. Expired or missing sessions require login. Parse JSON structurally and do not assume schemas across versions.
+Use `tsh status --format=json` only after confirming support in installed help. Read the `active` profile, not an arbitrary entry in `profiles`; verify its `profile_url`, `username`, `cluster`, `valid_until`, and `logins`. Run it to initialize or revalidate a cache, not for each task. Expired or missing sessions require user-completed login. Parse JSON structurally and do not assume schemas across versions.
 
 ## User-Completed Login
 
@@ -133,9 +122,9 @@ Positional arguments to `tsh ls` are label expressions such as `use=qa`, not nod
 tsh ls --proxy=teleport.example.com:443 --cluster=staging --query='name == "staging-api-1"'
 ```
 
-Use the returned node name or ID for target selection. Teleport enforces SSH access; a listing does not specify the user's intended task or authorize elevated commands or arbitrary changes. Keep discovered values out of executable expressions unless validated and escaped for both shell and predicate syntax.
+During cache initialization, retain returned node names, IDs, labels, and the discovery timestamp in the current conversation. Reuse this snapshot for later tasks rather than repeating a full listing. If a target is missing or ambiguous in the cache, use the exact query above or ask for clarification; never guess. Teleport enforces SSH access; a listing does not specify the user's intended task or authorize elevated commands or arbitrary changes. Keep discovered values out of executable expressions unless validated and escaped for both shell and predicate syntax.
 
-Confirm available formatting options with `tsh ls --help` before requesting structured output. Discover within the approved environment and select an exact node. Discovery visibility reflects the user's roles; missing nodes are not permission to connect directly by guessed addresses.
+Confirm available formatting options with `tsh ls --help` during cache initialization for the current client version. Discover within the approved environment and select an exact node. Discovery visibility reflects the user's roles; missing nodes are not permission to connect directly by guessed addresses. For inventory responses from cache, state when the snapshot was collected.
 
 ## One-Shot SSH Diagnostic
 
@@ -145,9 +134,9 @@ tsh ssh --proxy=teleport.example.com:443 --cluster=staging --request-mode=off di
 
 Use only a verified allowed OS login and exact node. The OS login (`diagnostics` here) is distinct from the Teleport identity used during login. Confirm timeout support in the execution tool and apply an agreed deadline before execution; do not assume a client timeout flag exists.
 
-Verify `--request-mode=off` support and use it to prevent automatic Access Requests. Prefer a basic login such as `c2-support` when appropriate. For every command using `c2-maintenance`, sudo, or root, show the exact target/login/command, confirm syntax, and obtain approval before execution. Root-only identities are supported after confirmation; do not automatically escalate on access denial. Explicitly requested changes require their own scope and confirmation rather than being inferred from a diagnostic request.
+Verify `--request-mode=off` support during cache initialization for the current client version and use it to prevent automatic Access Requests. Reuse that capability check until the client changes. Prefer a basic login such as `c2-support` when appropriate. For every command using `c2-maintenance`, sudo, or root, show the exact target/login/command, confirm syntax, and obtain approval before execution. Root-only identities are supported after confirmation; do not automatically escalate on access denial. Explicitly requested changes require their own scope and confirmation rather than being inferred from a diagnostic request.
 
-For GNU `timeout` around a terminal-accessing `tsh` in Bash/WSL, confirm `--foreground` support with `timeout --help` and use it, particularly in a subshell wrapper. For example, this is a 15-second deadline with an additional 2-second forced-kill grace, not a strict 15-second wall-clock cap:
+For GNU `timeout` around a terminal-accessing `tsh` in Bash/WSL, confirm `--foreground` support with `timeout --help` during cache initialization for that terminal environment and reuse the result until the environment changes. Use it, particularly in a subshell wrapper. For example, this is a 15-second deadline with an additional 2-second forced-kill grace, not a strict 15-second wall-clock cap:
 
 ```bash
 timeout --foreground --signal=TERM --kill-after=2s 15s tsh ssh --proxy=teleport.example.com:443 --cluster=staging --request-mode=off diagnostics@staging-api-1 uptime
