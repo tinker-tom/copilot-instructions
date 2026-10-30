@@ -33,6 +33,8 @@ These are illustrative placeholders, not actual targets. Preferences supply prom
 
 Do not store roles, node inventories, logins, certificates, keys, passwords, or tokens in this file. Keep private preferences Git-ignored and exclude them when distributing the skill. Apply organization-required filesystem protections separately; Git ignore is not an access-control mechanism.
 
+Do not add diagnostic exceptions to `assets/environment.json`. That file supplies local prompt defaults only; it is user-writable and does not grant authorization. A future SNMP workflow policy is described separately in [the deferred SNMP exception reference](./snmpwalk-policy.md) and is not consumed by setup.
+
 ## Labels and Target Selection
 
 Read nodes and labels live using structured output. Labels organize discovery; they do not grant access or authorize command fan-out.
